@@ -12,13 +12,14 @@ from tests.factories import AccountFactory
 from service.common import status  # HTTP Status Codes
 from service.models import db, Account, init_db
 from service.routes import app
+from service import talisman  # <-- Import talisman here
 
 DATABASE_URI = os.getenv(
     "DATABASE_URI", "postgresql://postgres:postgres@localhost:5432/postgres"
 )
 
 BASE_URL = "/accounts"
-
+HTTPS_ENVIRON = {'wsgi.url_scheme': 'https'}
 
 ######################################################################
 #  T E S T   C A S E S
@@ -34,6 +35,9 @@ class TestAccountService(TestCase):
         app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URI
         app.logger.setLevel(logging.CRITICAL)
         init_db(app)
+        
+        # Disable forced HTTPS for testing
+        talisman.force_https = False
 
     @classmethod
     def tearDownClass(cls):
@@ -84,6 +88,19 @@ class TestAccountService(TestCase):
         data = resp.get_json()
         self.assertEqual(data["status"], "OK")
 
+    def test_security_headers(self):  # ✅ NEW TEST
+        """It should return security headers"""
+        response = self.client.get("/", environ_overrides=HTTPS_ENVIRON)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        headers = {
+            'X-Frame-Options': 'SAMEORIGIN',
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Security-Policy': "default-src 'self'; object-src 'none'",
+            'Referrer-Policy': 'strict-origin-when-cross-origin'
+        }
+        for key, value in headers.items():
+            self.assertEqual(response.headers.get(key), value)
+
     def test_create_account(self):
         """It should Create a new Account"""
         account = AccountFactory()
@@ -122,26 +139,25 @@ class TestAccountService(TestCase):
         self.assertEqual(response.status_code, status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
     def test_read_an_account(self):
-    """It should Read a single Account"""
-    account_data = AccountFactory().serialize()
+        """It should Read a single Account"""
+        account_data = AccountFactory().serialize()
 
-    post_resp = self.client.post(
-        "/accounts",
-        json=account_data,
-        content_type="application/json"
-    )
-    self.assertEqual(post_resp.status_code, 201)
+        post_resp = self.client.post(
+            "/accounts",
+            json=account_data,
+            content_type="application/json"
+        )
+        self.assertEqual(post_resp.status_code, 201)
 
-    created_account = post_resp.get_json()
-    account_id = created_account["id"]
+        created_account = post_resp.get_json()
+        account_id = created_account["id"]
 
-    get_resp = self.client.get(f"/accounts/{account_id}")
-    self.assertEqual(get_resp.status_code, 200)
+        get_resp = self.client.get(f"/accounts/{account_id}")
+        self.assertEqual(get_resp.status_code, 200)
 
-    data = get_resp.get_json()
-    self.assertEqual(data["name"], account_data["name"])
-    self.assertEqual(data["email"], account_data["email"])
-
+        data = get_resp.get_json()
+        self.assertEqual(data["name"], account_data["name"])
+        self.assertEqual(data["email"], account_data["email"])
 
     def test_get_account_list(self):
         """It should Get a list of Accounts"""
@@ -169,3 +185,5 @@ class TestAccountService(TestCase):
         account = self._create_accounts(1)[0]
         resp = self.client.delete(f"{BASE_URL}/{account.id}")
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+
+    
