@@ -30,4 +30,6 @@ httpie==3.2.1
 
 flask-talisman
 Flask-Cors
+Flask
+gunicorn
 
