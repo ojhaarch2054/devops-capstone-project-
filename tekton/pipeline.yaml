@@ -25,7 +25,7 @@ spec:
 
     - name: clone
       workspaces:
-        - name: source  # Changed from "output" to "source" to match flake8 requirement
+        - name: source
           workspace: pipeline-workspace          
       taskRef:
         name: git-clone
@@ -52,5 +52,19 @@ spec:
             - "--max-complexity=10"
             - "--max-line-length=127"
             - "--statistics"
+      runAfter:
+        - clone
+
+    - name: tests
+      workspaces:
+        - name: source
+          workspace: pipeline-workspace
+      taskRef:
+        name: nose
+      params:
+        - name: database_uri
+          value: "sqlite:///test.db"
+        - name: args
+          value: "-v --with-spec --spec-color"
       runAfter:
         - clone
